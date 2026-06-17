@@ -1,0 +1,6 @@
+{
+  "name": "נועה — עוזרת משלוחים חכמה",
+  "description": "אפליקציית סלולר מתקדמת וצ'אט אינטואיטיבי עם נועה, עוזרת המשלוחים החכמה המאפשרת מעקב חבילות, עדכון כתובות ופתרון בעיות לוגיסטיקה במהירות ובחום.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
