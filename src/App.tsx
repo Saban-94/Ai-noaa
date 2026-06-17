@@ -729,10 +729,25 @@ export default function App() {
                               }`} />
                             )}
                             
-                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] z-10 font-bold ${
-                              isActive ? "bg-[#829460] text-white" : "bg-[#F5F5F0] text-[#A39E93]"
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] z-10 font-bold transition-all duration-300 ${
+                              isActive ? "bg-[#829460] text-white ring-2 ring-[#829460]/20" : "bg-[#F5F5F0] text-[#A39E93]"
                             }`}>
-                              {isActive ? "✓" : idx + 1}
+                              {isActive ? (
+                                <motion.span
+                                  key={`${activeOrder.statusKey}-${idx}`}
+                                  initial={{ scale: 0.3, rotate: -30 }}
+                                  animate={{ scale: [0.3, 1.3, 1], rotate: 0 }}
+                                  transition={{
+                                    duration: 0.45,
+                                    type: "spring",
+                                    stiffness: 300,
+                                    damping: 12
+                                  }}
+                                  className="inline-block"
+                                >
+                                  ✓
+                                </motion.span>
+                              ) : idx + 1}
                             </div>
                             <span className="text-[9px] text-[#5D4037] font-bold mt-1 text-center truncate w-full">
                               {step}
