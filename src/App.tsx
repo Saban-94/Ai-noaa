@@ -19,6 +19,7 @@ import {
   CornerDownLeft
 } from "lucide-react";
 import { Message, Order } from "./types";
+import DeliveryCalendar from "./components/DeliveryCalendar";
 
 // Default prompt suggestion sets
 const GENERAL_SUGGESTIONS = [
@@ -279,7 +280,8 @@ export default function App() {
   const [webhookInput, setWebhookInput] = useState("איפה המשלוח שלי #IL-8392-MX?");
   const [webhookResponse, setWebhookResponse] = useState<any>({
     action: "reply",
-    reply_text: "שלום! המשלוח שלך מסוג #IL-8392-MX נמצא כעת במסלול חלוקה עם השליח רונן. הוא צפוי להגיע אליך היום בין שעות 14:00 ל-16:00. תרצה שאעדכן את השליח להשאיר את המארז ליד הדלת?"
+    reply_text: "שלום! המשלוח שלך מסוג #IL-8392-MX נמצא כעת במסלול חלוקה עם השליח רונן. הוא צפוי להגיע אליך היום בין שעות 14:00 ל-16:00. תרצה שאעדכן את השליח להשאיר את המארז ליד הדלת?",
+    internal_note: ""
   });
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [webhookLogs, setWebhookLogs] = useState<Array<{ id: string; time: string; msg: string; response: any; status: string }>>([
@@ -287,7 +289,11 @@ export default function App() {
       id: "log-1",
       time: "18:42",
       msg: "היי, מתי מגיע השליח שלי?",
-      response: { action: "reply", reply_text: "שלום! המשלוח שלך צפוי להגיע היום בין שעות 14:00 ל-16:00." },
+      response: { 
+        action: "reply", 
+        reply_text: "שלום! המשלוח שלך צפוי להגיע היום בין שעות 14:00 ל-16:00.",
+        internal_note: ""
+      },
       status: "SUCCESS"
     }
   ]);
@@ -315,7 +321,7 @@ export default function App() {
       setWebhookLogs(prev => [newLog, ...prev]);
     } catch (e) {
       console.error(e);
-      const errRes = { action: "error", reply_text: "תקשורת נכשלה מול שרת SabanOS." };
+      const errRes = { action: "escalate", reply_text: "תקשורת נכשלה מול שרת SabanOS.", internal_note: "שגיאת רשת לקוח" };
       setWebhookResponse(errRes);
       setWebhookLogs(prev => [{
         id: `webhook-log-${Date.now()}`,
@@ -429,7 +435,7 @@ export default function App() {
 
           {/* Webhook Logs History list */}
           <div className="space-y-2 pt-4 border-t border-[#E0DBCF]/50">
-            <h3 className="text-xs font-black text-[#829460] uppercase tracking-wider">לוג תעבורת Webhooks של נועה:</h3>
+            <h3 className="text-xs font-black text-[#829460] uppercase tracking-wider">לוג תעבורת Webhooks של נועה (שעשוע):</h3>
             <div className="space-y-1.5 max-h-[150px] overflow-y-auto divide-y divide-[#E0DBCF]/30">
               {webhookLogs.map((log) => (
                 <div key={log.id} className="pt-2 flex items-start justify-between text-xs">
@@ -437,13 +443,24 @@ export default function App() {
                     <span className="font-semibold text-[#A39E93] shrink-0">{log.time}</span>
                     <div className="truncate">
                       <p className="font-bold text-[#3E2723] truncate">📥 {log.msg}</p>
-                      <p className="text-[#829460] text-[10px] truncate mt-0.5">📤 {log.response?.reply_text}</p>
+                      <p className="text-[#829460] text-[10px] truncate mt-0.5">
+                        {log.response?.action === "escalate" ? (
+                          <span className="text-amber-700 font-bold">🚨 [הסלמה] </span>
+                        ) : "📤 "}
+                        {log.response?.reply_text}
+                      </p>
+                      {log.response?.internal_note && (
+                        <p className="text-red-700 font-semibold text-[9px] truncate mt-0.5 bg-red-50 px-1 py-0.5 rounded border border-red-100 max-w-full inline-block">
+                          ✍️ ראמי, שים לב: {log.response.internal_note}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                    log.response?.action === "escalate" ? "bg-amber-100 text-amber-800" :
                     log.status === "SUCCESS" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
                   }`}>
-                    {log.status}
+                    {log.response?.action === "escalate" ? "ESCALATE" : log.status}
                   </span>
                 </div>
               ))}
@@ -536,7 +553,7 @@ export default function App() {
               transition={{ duration: 0.25, ease: "easeInOut" }}
               className="bg-[#FDFBF7] border-b border-[#E0DBCF] overflow-hidden z-30"
             >
-              <div className="p-4 max-h-[350px] overflow-y-auto space-y-3 divide-y divide-[#E0DBCF]/40">
+              <div className="p-4 max-h-[460px] overflow-y-auto space-y-3 divide-y divide-[#E0DBCF]/40">
                 <div className="pb-2 flex items-center justify-between">
                   <h3 className="text-xs font-black text-[#829460] uppercase tracking-widest flex items-center gap-2">
                     <Package className="w-3.5 h-3.5" />
@@ -581,6 +598,15 @@ export default function App() {
                     </div>
                   ))}
                 </div>
+
+                {/* Monthly summary deliveries calendar view */}
+                <DeliveryCalendar 
+                  orders={orders} 
+                  activeOrderId={activeOrderId} 
+                  onSelectOrder={(id) => {
+                    setActiveOrderId(id);
+                  }}
+                />
               </div>
             </motion.div>
           )}

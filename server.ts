@@ -26,46 +26,61 @@ async function startServer() {
   app.post("/api/webhook", async (req, res) => {
     try {
       const incomingMessage = req.body.message || req.body.text || "";
+      const senderName = req.body.sender || req.body.name || "לקוח";
+
       if (!incomingMessage) {
         return res.status(400).json({
-          action: "error",
-          reply_text: "לא התקבלה הודעה תקינה בבקשה."
+          action: "reply",
+          reply_text: "לא התקבלה הודעה תקינה בבקשה.",
+          internal_note: ""
         });
       }
 
       const systemInstruction = `
-אתה "נועה" (נועה / Noa), מנוע הליבה החכם של פלטפורמת הלוגיסטיקה SabanOS. אתה פועל כמשיב אוטומטי בוואטסאפ (WhatsApp Auto-Responder) ומערכת שליטה מרחוק.
+אתה "נועה" (נועה / Noa), מנוע הליבה החכם של פלטפורמת הלוגיסטיקה SabanOS. אתה פועל כמשיב אוטומטי בוואטסאפ (WhatsApp Auto-Responder) המחובר באמצעות Webhook של MacroDroid.
 
 קלט:
-תקבל הודעות וואטסאפ נכנסות שהועברו דרך Webhook.
+תקבל הודעת וואטסאפ נכנסת מאת המשתמש.
 
-משימה:
-1. נתח את הקשר ההודעה (לוגיסטיקה, סטטוס הזמנה, צ'אט כללי, או פקודה מרחוק).
-2. ניסוח תשובה קצרה, חמה ויעילה ביותר בעברית פשוטה ונטולת פגמים.
-3. שמור על טון מקצועי, ישיר ובגובה העיניים.
+משימות:
+1. נתח את הקשר ההודעה (סטטוס לוגיסטי, מעקב, שינוי כתובת, שאלות או דיווחי בעיות/תקלות).
+2. ניסוח תשובה קצרה, חמה ומזמינה ביותר בעברית פשוטה ונקייה. ללא ז'רגון טכני או מונחי קוד, ובגובה העיניים.
+3. קבע האם ההודעה דורשת טיפול רגיל ומענה פשוט ("reply") או שהיא בעיה חמורה, תלונה קשה, מוצר שבור/פגום, כעס רב או קושי שהבוט אינו יכול לפתור לבדו ודורש הסלמה דחופה לניהול הלוגיסטי של ראמי ("escalate").
 
 פלט:
-עליך לענות אך ורק (STRICTLY) בפורמט ה-JSON הבא:
+עליך להחזיר אך ורק (STRICTLY) תגובת JSON בפורמט הבא, ללא שימוש בתגי סימון קוד (Markdown blocks) או טקסט נוסף מחוץ ל-JSON:
 {
-  "action": "reply",
-  "reply_text": "התשובה המדויקת שתישלח ללקוח או לנהג בוואטסאפ"
+  "action": "reply" | "escalate",
+  "reply_text": "התשובה הקצרה והחמה לשולח בעברית",
+  "internal_note": "אם נבחר escalate, כתוב כאן תקציר קצר לראמי למה נדרש הטיפול שלו. אחרת השאר ריק (מחרוזת ריקה)"
 }
 `;
 
       try {
         const response = await ai.models.generateContent({
           model: "gemini-3.5-flash",
-          contents: [{ role: 'user', parts: [{ text: incomingMessage }] }],
+          contents: [{ role: 'user', parts: [{ text: `שם השולח: ${senderName}\nתוכן ההודעה: ${incomingMessage}` }] }],
           config: {
             systemInstruction: systemInstruction,
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
               properties: {
-                action: { type: Type.STRING },
-                reply_text: { type: Type.STRING }
+                action: { 
+                  type: Type.STRING,
+                  enum: ["reply", "escalate"],
+                  description: "Whether to reply normally or escalate if there is a severe logistical issue, damaged goods, or angry user."
+                },
+                reply_text: { 
+                  type: Type.STRING,
+                  description: "The short, warm friendly Hebrew text to send back to the user on WhatsApp."
+                },
+                internal_note: { 
+                  type: Type.STRING,
+                  description: "Logistics summary for Rami if action is 'escalate'. Otherwise keep empty."
+                }
               },
-              required: ["action", "reply_text"]
+              required: ["action", "reply_text", "internal_note"]
             }
           }
         });
@@ -81,30 +96,37 @@ async function startServer() {
       // Robust fallback parser
       const query = incomingMessage.toLowerCase();
       let reply = "";
-      if (query.includes("איפה") || query.includes("סטטוס") || query.includes("משלוח") || query.includes("מתי")) {
-        reply = "שלום! המשלוח שלך מסוג #IL-8392-MX נמצא כעת במסלול חלוקה עם השליח רונן. הוא צפוי להגיע אליך היום בין שעות 14:00 ל-16:00. תרצה שאעדכן את השליח להשאיר את המארז ליד הדלת?";
+      let action: "reply" | "escalate" = "reply";
+      let internal_note = "";
+
+      if (query.includes("בעיה") || query.includes("שבור") || query.includes("פגום") || query.includes("חסר") || query.includes("כועס") || query.includes("תלונה")) {
+        action = "escalate";
+        reply = "אני מצטערת מאוד לשמוע על הבעיה! העברתי את פנייתך מיד לטיפול לוגיסטי דחוף של ראמי. נציג מטעמנו יצור איתך קשר בהקדם האפשרי.";
+        internal_note = `התקבלה תלונה מהלקוח ${senderName} על מוצר פגום/בעיה: "${incomingMessage}". נדרש טיפול אנושי של ראמי.`;
+      } else if (query.includes("איפה") || query.includes("סטטוס") || query.includes("משלוח") || query.includes("מתי")) {
+        reply = `שלום ${senderName}! המשלוח שלך מסוג #IL-8392-MX נמצא כעת במסלול חלוקה עם השליח רונן. הוא צפוי להגיע אליך היום בין שעות 14:00 ל-16:00. תרצה שאעדכן את השליח להשאיר את המארז ליד הדלת?`;
       } else if (query.includes("כתובת") || query.includes("לשנות") || query.includes("שנה")) {
-        reply = "אין בעיה בכלל! שלח לי את הכתובת החדשה והמדויקת למסירה, ואני אעדכן את השליח שלנו באופן מיידי במערכת SabanOS.";
+        reply = `אין בעיה בכלל, ${senderName}! שלח לי את הכתובת החדשה והמדויקת למסירה, ואני אעדכן את השליח שלנו באופן מיידי במערכת SabanOS.`;
       } else if (query.includes("להשאיר") || query.includes("דלת") || query.includes("ארון ושירות") || query.includes("ארון החשמל")) {
         reply = "הערת המסירה שלך נרשמה בהצלחה! עדכנתי את השליח להשאיר את החבילה לפי ההנחיות שלך. שירות מצוין תמיד בראש סדר העדיפויות שלנו.";
       } else if (query.includes("נהג") || query.includes("יוצרים קשר") || query.includes("טלפון") || query.includes("רונן")) {
         reply = "השליח שלך הוא רונן (054-987-6543). הוא נמצא בדרכו אליך כעת. תוכל ליצור איתו קשר ישיר לכל תיאום נוסף.";
-      } else if (query.includes("בעיה") || query.includes("שבור") || query.includes("פגום") || query.includes("חסר")) {
-        reply = "אני מצטערת מאוד לשמוע! רשמתי מיד את תלונתך ופתחתי פנייה דחופה בצוות הבקרה שלנו ב-SabanOS. נציג מטעמנו יחזור אליך טלפונית בהקדם.";
       } else {
-        reply = "היי! אני נועה, עוזרת המשלוחים והמשיבה האוטומטית הרשמית של SabanOS. איך אוכל לעזור לך ולבצע עבורך מעקב, עדכון כתובת או העברת הנחיה לשליח היום?";
+        reply = `היי ${senderName}! אני נועה, עוזרת המשלוחים והמשיבה האוטומטית הרשמית של SabanOS. איך אוכל לעזור לך ולבצע עבורך מעקב, עדכון כתובת או העברת הנחיה לשליח היום?`;
       }
 
       return res.json({
-        action: "reply",
-        reply_text: reply
+        action,
+        reply_text: reply,
+        internal_note
       });
 
     } catch (e: any) {
       console.error(e);
       res.status(500).json({
         action: "reply",
-        reply_text: "היי, נועה כאן. כרגע חלה תקלה במערכת SabanOS. פנייתך נשמרה ונחזור אליך בהקדם."
+        reply_text: "היי, נועה כאן. כרגע חלה תקלה במערכת SabanOS. פנייתך נשמרה ונחזור אליך בהקדם.",
+        internal_note: "תקלה בשרת בעת עיבוד הודעה"
       });
     }
   });
